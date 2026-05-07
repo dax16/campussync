@@ -1,0 +1,11 @@
+{
+  "name": "campussync",
+  "version": "1.0.0",
+  "scripts": {
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm start",
+    "dev:ai": "cd ai-service && python app.py",
+    "start": "cd server && npm start"
+  }
+}
