@@ -3,12 +3,14 @@ import axios from 'axios';
 import Booking from '../models/Booking';
 import { auth } from '../middleware/auth';
 import { validate, bookingCreationValidator } from '../middleware/validators';
+import { bookingRateLimiter } from '../config/security';
+import { toBookingDate } from '../config/constants';
 import env from '../config/env';
 import { BookingStatus } from '../types';
 
 const router = express.Router();
 
-router.post('/', auth, bookingCreationValidator, validate, async (req: Request, res: Response): Promise<void> => {
+router.post('/', auth, bookingRateLimiter, bookingCreationValidator, validate, async (req: Request, res: Response): Promise<void> => {
   try {
     const { roomId, date, startTime, endTime, purpose, attendees, notes } = req.body as {
       roomId: string;
@@ -20,9 +22,11 @@ router.post('/', auth, bookingCreationValidator, validate, async (req: Request, 
       notes?: string;
     };
 
+    const bookingDate = toBookingDate(date);
+
     const conflict = await Booking.findOne({
       room: roomId,
-      date,
+      date: bookingDate,
       status: BookingStatus.CONFIRMED,
       $or: [{ startTime: { $lt: endTime }, endTime: { $gt: startTime } }],
     });
@@ -34,7 +38,7 @@ router.post('/', auth, bookingCreationValidator, validate, async (req: Request, 
     const booking = new Booking({
       user: req.user?._id,
       room: roomId,
-      date,
+      date: bookingDate,
       startTime,
       endTime,
       purpose,
@@ -45,12 +49,16 @@ router.post('/', auth, bookingCreationValidator, validate, async (req: Request, 
 
     const populated = await booking.populate(['user', 'room']);
 
-    req.io?.emit('bookingCreated', { roomId, date, startTime, endTime });
     req.io?.bookingCreated?.(booking);
 
     res.status(201).json(populated);
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    if ((err as { code?: number }).code === 11000) {
+      res.status(400).json({ message: 'Room already booked for this time slot' });
+      return;
+    }
+    console.error('POST /bookings:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -61,7 +69,8 @@ router.get('/my', auth, async (req: Request, res: Response): Promise<void> => {
       .sort({ date: -1, startTime: -1 });
     res.json(bookings);
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('GET /bookings/my:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -75,7 +84,8 @@ router.get('/suggest', auth, async (req: Request, res: Response): Promise<void> 
       });
       res.json(aiRes.data);
       return;
-    } catch {
+    } catch (aiErr) {
+      console.warn('AI service unavailable, using fallback:', (aiErr as Error).message);
       const slots: Array<{ start: string; score: number }> = [];
       for (let h = 9; h <= 17; h++) {
         slots.push({ start: `${h.toString().padStart(2, '0')}:00`, score: Math.random() });
@@ -84,7 +94,8 @@ router.get('/suggest', auth, async (req: Request, res: Response): Promise<void> 
       return;
     }
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('GET /bookings/suggest:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -98,16 +109,12 @@ router.patch('/:id/cancel', auth, async (req: Request, res: Response): Promise<v
     booking.status = BookingStatus.CANCELLED;
     await booking.save();
 
-    req.io?.emit('bookingCancelled', {
-      roomId: booking.room,
-      date: booking.date,
-      startTime: booking.startTime,
-    });
     req.io?.bookingCancelled?.(booking);
 
     res.json(booking);
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('PATCH /bookings/:id/cancel:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 

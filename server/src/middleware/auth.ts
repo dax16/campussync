@@ -13,7 +13,7 @@ export const auth = async (req: Request, res: Response, next: NextFunction): Pro
     }
 
     const decoded = jwt.verify(token, env.jwtSecret) as AppJwtPayload;
-    const user = await User.findById(decoded.userId).select('-password');
+    const user = await User.findById(decoded.userId).select('-password -resetToken -resetTokenExpiry');
     if (!user) {
       res.status(401).json({ message: 'User not found' });
       return;
@@ -27,11 +27,13 @@ export const auth = async (req: Request, res: Response, next: NextFunction): Pro
 };
 
 export const adminAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  await auth(req, res, () => {
-    if (req.user?.role !== 'admin') {
-      res.status(403).json({ message: 'Admin access required' });
-      return;
-    }
-    next();
-  });
+  let authPassed = false;
+  await auth(req, res, () => { authPassed = true; });
+  if (!authPassed) return;
+
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ message: 'Admin access required' });
+    return;
+  }
+  next();
 };

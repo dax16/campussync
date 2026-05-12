@@ -1,6 +1,5 @@
 import { body, ValidationChain } from 'express-validator';
-
-const STUDENT_EMAIL_DOMAIN = 'campus.ca';
+import { STUDENT_EMAIL_DOMAIN } from '../../config/constants';
 
 const normalizeString = (value: unknown): unknown =>
   typeof value === 'string' ? value.trim() : value;

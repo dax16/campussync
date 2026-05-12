@@ -1,0 +1,115 @@
+# CampusSync — Production Compose
+# Usage:
+#   1. Copy .env.example → .env and fill in secrets
+#   2. docker compose up --build -d
+#
+# All services share the campussync_net bridge network.
+# Only the client (port 3000) needs to be exposed to the host.
+# The server port (5000) is exposed for direct API access / debugging.
+
+services:
+
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: campussync_mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - campussync_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Backend (Node.js / Express / Socket.io) ────────────────────────────────
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      target: production
+    container_name: campussync_server
+    restart: unless-stopped
+    # Secrets come from the root .env file (docker compose reads it automatically).
+    # Service-level URLs override whatever is in server/.env.
+    environment:
+      NODE_ENV:         production
+      PORT:             5000
+      MONGO_URI:        mongodb://mongo:27017/campussync
+      AI_SERVICE_URL:   http://ai-service:8000
+      CLIENT_URL:       http://localhost:3000
+      CORS_ORIGINS:     http://localhost:3000
+      # These are injected from the root .env file
+      JWT_SECRET:       ${JWT_SECRET}
+      EMAIL_USER:       ${EMAIL_USER:-}
+      EMAIL_PASS:       ${EMAIL_PASS:-}
+    ports:
+      - "5000:5000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - campussync_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── AI Recommendation Service (Python / Flask / Gunicorn) ─────────────────
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+      target: production
+    container_name: campussync_ai
+    restart: unless-stopped
+    networks:
+      - campussync_net
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Frontend (React → nginx) ───────────────────────────────────────────────
+  # nginx serves the compiled React bundle and reverse-proxies:
+  #   /api/*      → server:5000
+  #   /socket.io/ → server:5000  (WebSocket upgrade handled)
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: production
+      args:
+        # Baked into the React bundle at build time.
+        # Must match the URL the browser uses to reach this nginx instance.
+        REACT_APP_API_URL: http://localhost:3000
+    container_name: campussync_client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      server:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    networks:
+      - campussync_net
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  mongo_data:
+    name: campussync_mongo_data
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  campussync_net:
+    name: campussync_network
+    driver: bridge

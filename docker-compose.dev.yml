@@ -1,0 +1,87 @@
+# CampusSync — Development Overrides
+# Usage:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#   or:   npm run docker:dev  (shortcut in root package.json)
+#
+# Differences from production:
+#   - Source code is mounted so changes hot-reload without rebuild
+#   - Flask and nodemon dev servers replace gunicorn / node dist/
+#   - MongoDB port is exposed to the host for tools like Compass
+#   - Client dev server (port 3000) replaces nginx
+#   - Browser calls the server directly on localhost:5000 (no nginx proxy)
+
+services:
+
+  # ── MongoDB ────────────────────────────────────────────────────────────────
+  mongo:
+    ports:
+      - "27017:27017"   # expose for MongoDB Compass / mongosh on host
+
+  # ── Backend ────────────────────────────────────────────────────────────────
+  server:
+    build:
+      target: development
+    container_name: campussync_server_dev
+    environment:
+      NODE_ENV:       development
+      JWT_SECRET:     ${JWT_SECRET:-dev_jwt_secret_change_me_before_prod}
+      EMAIL_USER:     ${EMAIL_USER:-}
+      EMAIL_PASS:     ${EMAIL_PASS:-}
+    volumes:
+      # Hot-reload: mount source only — node_modules stays in the image
+      - ./server/src:/app/src:delegated
+      - ./server/nodemon.json:/app/nodemon.json:ro
+      - ./server/tsconfig.json:/app/tsconfig.json:ro
+    # Override healthcheck for faster dev feedback
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  # ── AI Service ─────────────────────────────────────────────────────────────
+  ai-service:
+    build:
+      target: development
+    container_name: campussync_ai_dev
+    environment:
+      FLASK_APP:   app.py
+      FLASK_ENV:   development
+      FLASK_DEBUG: "1"
+    volumes:
+      # Mount entire ai-service dir; Flask watches app.py for changes
+      - ./ai-service:/app:delegated
+    ports:
+      - "8000:8000"   # expose for direct testing from host
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  client:
+    build:
+      target: development
+    container_name: campussync_client_dev
+    environment:
+      # Browser reaches the server on localhost:5000 (port-forwarded from host)
+      REACT_APP_API_URL:    http://localhost:5000
+      CHOKIDAR_USEPOLLING:  "true"   # required for file-watch in Docker on Windows/Mac
+      HOST:                 0.0.0.0  # bind dev server to all interfaces
+      WDS_SOCKET_PORT:      "3000"   # keep WebSocket on same port as dev server
+    volumes:
+      # Hot-reload: mount source only — node_modules stays in the image
+      - ./client/src:/app/src:delegated
+      - ./client/public:/app/public:delegated
+    ports:
+      - "3000:3000"
+    # In dev the client makes API calls directly to localhost:5000, so
+    # it does not depend on the nginx-proxied production build path.
+    depends_on:
+      server:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy

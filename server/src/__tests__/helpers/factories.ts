@@ -1,6 +1,7 @@
 import Room, { IRoomDocument } from '../../models/Room';
 import Booking, { IBookingDocument } from '../../models/Booking';
 import { RoomType, BookingStatus } from '../../types';
+import { toBookingDate } from '../../config/constants';
 import { Types } from 'mongoose';
 
 export interface RoomOptions {
@@ -41,7 +42,7 @@ export const createBooking = async (opts: BookingOptions): Promise<IBookingDocum
   const booking = new Booking({
     user: opts.userId,
     room: opts.roomId,
-    date: opts.date ?? '2030-06-15',
+    date: toBookingDate(opts.date ?? '2030-06-15'),
     startTime: opts.startTime ?? '10:00',
     endTime: opts.endTime ?? '11:00',
     purpose: opts.purpose ?? 'Study session',

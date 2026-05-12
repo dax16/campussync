@@ -2,6 +2,9 @@
 # CampusSync — .gitignore
 # ============================================================
 
+# ─── Docker secrets (root .env is read by docker compose) ───
+.env
+
 # ─── Node.js ────────────────────────────────────────────────
 node_modules/
 npm-debug.log*

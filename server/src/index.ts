@@ -24,6 +24,20 @@ const startServer = async (): Promise<void> => {
   server.listen(env.port, () => {
     console.log(`Server running on port ${env.port}`);
   });
+
+  const shutdown = async (signal: string): Promise<void> => {
+    console.log(`${signal} received — shutting down gracefully`);
+    server.close(async () => {
+      await mongoose.connection.close();
+      console.log('MongoDB connection closed');
+      process.exit(0);
+    });
+    // Force exit if graceful shutdown takes too long
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 };
 
 startServer().catch((err: unknown) => {

@@ -7,7 +7,7 @@ const bookingSchema = new Schema<IBookingDocument>(
   {
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     room: { type: Schema.Types.ObjectId, ref: 'Room', required: true },
-    date: { type: String, required: true },
+    date: { type: Date, required: true },
     startTime: { type: String, required: true },
     endTime: { type: String, required: true },
     purpose: { type: String, required: true },
@@ -17,12 +17,16 @@ const bookingSchema = new Schema<IBookingDocument>(
       enum: Object.values(BookingStatus),
       default: BookingStatus.CONFIRMED,
     },
-    checkInTime: { type: Date, default: null },
     notes: { type: String, default: '' },
   },
   { timestamps: true },
 );
 
 bookingSchema.index({ room: 1, date: 1 });
+// Prevents duplicate confirmed bookings for the same slot (race-condition guard)
+bookingSchema.index(
+  { room: 1, date: 1, startTime: 1 },
+  { unique: true, partialFilterExpression: { status: 'confirmed' } },
+);
 
 export default model<IBookingDocument>('Booking', bookingSchema);

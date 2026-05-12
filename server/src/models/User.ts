@@ -12,9 +12,12 @@ const userSchema = new Schema<IUserDocument>(
     program: { type: String, default: 'ITS' },
     semester: { type: Number, default: 1 },
     role: { type: String, enum: Object.values(UserRole), default: UserRole.STUDENT },
-    avatar: { type: String, default: '' },
+    resetToken: { type: String, default: null },
+    resetTokenExpiry: { type: Date, default: null },
   },
   { timestamps: true },
 );
+
+userSchema.index({ resetToken: 1 }, { sparse: true });
 
 export default model<IUserDocument>('User', userSchema);

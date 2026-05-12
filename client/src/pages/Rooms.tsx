@@ -1,25 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import { roomsApi, getApiError } from '../api';
+import LoadingScreen from '../components/LoadingScreen';
+import type { Room, RoomType, RoomFilters } from '../types';
 import './Rooms.css';
 
-const typeLabels = { study_room: 'Study Room', lab: 'Lab', meeting_room: 'Meeting Room', computer_lab: 'Computer Lab' };
-const typeIcons = { study_room: '📚', lab: '🔬', meeting_room: '🤝', computer_lab: '💻' };
+const TYPE_LABELS: Record<RoomType, string> = {
+  study_room: 'Study Room',
+  lab: 'Lab',
+  meeting_room: 'Meeting Room',
+  computer_lab: 'Computer Lab',
+};
 
-export default function Rooms() {
-  const [rooms, setRooms] = useState([]);
+const TYPE_ICONS: Record<RoomType, string> = {
+  study_room: '📚',
+  lab: '🔬',
+  meeting_room: '🤝',
+  computer_lab: '💻',
+};
+
+const Rooms: React.FC = () => {
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ type: '', capacity: '', date: new Date().toISOString().split('T')[0] });
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<RoomFilters>({
+    type: '',
+    capacity: '',
+    date: new Date().toISOString().split('T')[0],
+  });
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (filters.type) params.set('type', filters.type);
-    if (filters.capacity) params.set('capacity', filters.capacity);
-    if (filters.date) params.set('date', filters.date);
-
-    axios.get(`/api/rooms?${params}`)
-      .then(res => setRooms(res.data))
+    setError(null);
+    roomsApi
+      .list(filters)
+      .then((res) => setRooms(res.data))
+      .catch((err) => setError(getApiError(err, 'Failed to load rooms')))
       .finally(() => setLoading(false));
   }, [filters]);
 
@@ -34,19 +50,31 @@ export default function Rooms() {
         <div className="filters-row">
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>Date</label>
-            <input type="date" value={filters.date} min={new Date().toISOString().split('T')[0]}
-              onChange={e => setFilters({...filters, date: e.target.value})} />
+            <input
+              type="date"
+              value={filters.date}
+              min={new Date().toISOString().split('T')[0]}
+              onChange={(e) => setFilters({ ...filters, date: e.target.value })}
+            />
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>Room Type</label>
-            <select value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})}>
+            <select
+              value={filters.type}
+              onChange={(e) => setFilters({ ...filters, type: e.target.value as RoomType | '' })}
+            >
               <option value="">All Types</option>
-              {Object.entries(typeLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {(Object.entries(TYPE_LABELS) as [RoomType, string][]).map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
             </select>
           </div>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label>Min Capacity</label>
-            <select value={filters.capacity} onChange={e => setFilters({...filters, capacity: e.target.value})}>
+            <select
+              value={filters.capacity}
+              onChange={(e) => setFilters({ ...filters, capacity: e.target.value })}
+            >
               <option value="">Any</option>
               <option value="2">2+</option>
               <option value="5">5+</option>
@@ -57,14 +85,23 @@ export default function Rooms() {
         </div>
       </div>
 
+      {error && (
+        <div className="card" style={{ textAlign: 'center', padding: '32px', marginBottom: 16 }}>
+          <p style={{ color: 'var(--danger)', marginBottom: 12 }}>{error}</p>
+          <button className="btn btn-outline btn-sm" onClick={() => setFilters({ ...filters })}>
+            Retry
+          </button>
+        </div>
+      )}
+
       {loading ? (
-        <div className="loading-screen" style={{ height: 200 }}><div className="spinner" /></div>
+        <LoadingScreen height={200} />
       ) : (
         <div className="grid-3">
-          {rooms.map(room => (
+          {rooms.map((room) => (
             <Link to={`/rooms/${room._id}`} key={room._id} className="room-card">
               <div className="room-card-header">
-                <span className="room-type-icon">{typeIcons[room.type] || '🏢'}</span>
+                <span className="room-type-icon">{TYPE_ICONS[room.type] ?? '🏢'}</span>
                 <span className={`badge ${room.bookings?.length ? 'badge-warning' : 'badge-success'}`}>
                   {room.bookings?.length ? `${room.bookings.length} booked` : 'Available'}
                 </span>
@@ -73,15 +110,15 @@ export default function Rooms() {
               <p className="room-card-meta">{room.building} · Floor {room.floor}</p>
               <div className="room-card-details">
                 <span>👥 {room.capacity} people</span>
-                <span>{typeLabels[room.type]}</span>
+                <span>{TYPE_LABELS[room.type]}</span>
               </div>
               <div className="room-amenities">
-                {room.amenities?.slice(0, 3).map(a => (
+                {room.amenities.slice(0, 3).map((a) => (
                   <span key={a} className="amenity-tag">{a}</span>
                 ))}
               </div>
               <div className="room-card-footer">
-                <span className="book-link">View & Book →</span>
+                <span className="book-link">View &amp; Book →</span>
               </div>
             </Link>
           ))}
@@ -96,4 +133,6 @@ export default function Rooms() {
       )}
     </div>
   );
-}
+};
+
+export default Rooms;

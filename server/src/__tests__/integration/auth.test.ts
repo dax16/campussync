@@ -1,6 +1,8 @@
 import supertest from 'supertest';
+import crypto from 'crypto';
 import { getTestApp } from '../helpers/app.helper';
 import { createTestUser, generateToken, authHeader } from '../helpers/auth.helper';
+import User from '../../models/User';
 
 const request = supertest(getTestApp());
 
@@ -130,5 +132,116 @@ describe('GET /api/auth/me', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.message).toBe('Invalid token');
+  });
+
+  it('200 — does not expose resetToken or resetTokenExpiry', async () => {
+    const user = await createTestUser({ studentId: 's20030' });
+    const token = generateToken(String(user._id));
+
+    const res = await request.get('/api/auth/me').set(authHeader(token));
+
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('resetToken');
+    expect(res.body).not.toHaveProperty('resetTokenExpiry');
+  });
+});
+
+describe('POST /api/auth/forgot-password', () => {
+  it('200 — returns safe message for an existing email', async () => {
+    await createTestUser({ studentId: 's20040' });
+
+    const res = await request
+      .post('/api/auth/forgot-password')
+      .send({ email: 's20040@campus.ca' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/reset link/i);
+  });
+
+  it('200 — returns same message for a nonexistent email (prevents enumeration)', async () => {
+    const res = await request
+      .post('/api/auth/forgot-password')
+      .send({ email: 'ghost@campus.ca' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/reset link/i);
+  });
+
+  it('400 — returns 400 when email is missing', async () => {
+    const res = await request.post('/api/auth/forgot-password').send({});
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /api/auth/reset-password', () => {
+  it('200 — resets the password with a valid token', async () => {
+    const user = await createTestUser({ studentId: 's20050' });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+    user.resetToken = hashedToken;
+    user.resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000);
+    await user.save();
+
+    const res = await request
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, password: 'NewPassword123' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/reset successful/i);
+
+    const updated = await User.findById(user._id);
+    expect(updated?.resetToken).toBeNull();
+  });
+
+  it('400 — returns 400 for an expired token', async () => {
+    const user = await createTestUser({ studentId: 's20051' });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+    user.resetToken = hashedToken;
+    user.resetTokenExpiry = new Date(Date.now() - 1000);
+    await user.save();
+
+    const res = await request
+      .post('/api/auth/reset-password')
+      .send({ token: rawToken, password: 'NewPassword123' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/invalid or expired/i);
+  });
+
+  it('400 — returns 400 for an invalid token', async () => {
+    const res = await request
+      .post('/api/auth/reset-password')
+      .send({ token: 'not-a-real-token', password: 'NewPassword123' });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('400 — returns 400 when password is too short (< 8)', async () => {
+    const res = await request
+      .post('/api/auth/reset-password')
+      .send({ token: 'any', password: 'short' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/between 8 and 128/i);
+  });
+
+  it('400 — returns 400 when password exceeds 128 characters', async () => {
+    const res = await request
+      .post('/api/auth/reset-password')
+      .send({ token: 'any', password: 'a'.repeat(129) });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/between 8 and 128/i);
+  });
+
+  it('400 — returns 400 when token or password is missing', async () => {
+    const res = await request
+      .post('/api/auth/reset-password')
+      .send({ password: 'NewPassword123' });
+
+    expect(res.status).toBe(400);
   });
 });

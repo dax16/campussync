@@ -2,10 +2,16 @@
   "name": "campussync",
   "version": "1.0.0",
   "scripts": {
-    "install:all": "cd server && npm install && cd ../client && npm install",
-    "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm start",
-    "dev:ai": "cd ai-service && python app.py",
-    "start": "cd server && npm start"
+    "install:all":  "cd server && npm install && cd ../client && npm install",
+    "dev:server":   "cd server && npm run dev",
+    "dev:client":   "cd client && npm start",
+    "dev:ai":       "cd ai-service && python app.py",
+    "start":        "cd server && npm start",
+
+    "docker:dev":   "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
+    "docker:prod":  "docker compose up --build -d",
+    "docker:down":  "docker compose down",
+    "docker:clean": "docker compose down -v --remove-orphans",
+    "docker:logs":  "docker compose logs -f"
   }
 }

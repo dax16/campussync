@@ -23,6 +23,10 @@ const initSocket = (io: AppServer): void => {
       void socket.join(`availability:${roomId}:${date}`);
     });
 
+    socket.on('leaveDate', ({ roomId, date }: { roomId: string; date: string }) => {
+      void socket.leave(`availability:${roomId}:${date}`);
+    });
+
     socket.on('disconnect', () => {
       console.log('Client disconnected:', socket.id);
     });

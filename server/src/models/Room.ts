@@ -13,7 +13,6 @@ const roomSchema = new Schema<IRoomDocument>(
     amenities: [{ type: String }],
     imageUrl: { type: String, default: '' },
     isActive: { type: Boolean, default: true },
-    currentOccupancy: { type: Number, default: 0 },
   },
   { timestamps: true },
 );

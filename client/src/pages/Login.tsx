@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getApiError } from '../api';
 import toast from 'react-hot-toast';
 import './Auth.css';
 
-export default function Login() {
-  const [form, setForm] = useState({ email: '', password: '' });
+interface LoginForm {
+  email: string;
+  password: string;
+}
+
+const Login: React.FC = () => {
+  const [form, setForm] = useState<LoginForm>({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     setLoading(true);
     try {
@@ -18,7 +24,7 @@ export default function Login() {
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed');
+      toast.error(getApiError(err, 'Login failed'));
     } finally {
       setLoading(false);
     }
@@ -38,6 +44,7 @@ export default function Login() {
           <div className="feature-item"><span>📊</span><p>Campus usage analytics</p></div>
         </div>
       </div>
+
       <div className="auth-right">
         <div className="auth-card">
           <h2>Sign in</h2>
@@ -45,21 +52,43 @@ export default function Login() {
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label>Email</label>
-              <input type="email" placeholder="student@campus.ca" value={form.email}
-                onChange={e => setForm({...form, email: e.target.value})} required />
+              <input
+                type="email"
+                placeholder="student@campus.ca"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                required
+              />
             </div>
             <div className="form-group">
               <label>Password</label>
-              <input type="password" placeholder="••••••••" value={form.password}
-                onChange={e => setForm({...form, password: e.target.value})} required />
+              <input
+                type="password"
+                placeholder="••••••••"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                required
+              />
             </div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} disabled={loading}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+              disabled={loading}
+            >
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
-          <p className="auth-link">Don't have an account? <Link to="/register">Register</Link></p>
+          <p className="auth-link">
+            <Link to="/forgot-password">Forgot password?</Link>
+          </p>
+          <p className="auth-link">
+            Don&apos;t have an account? <Link to="/register">Register</Link>
+          </p>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default Login;

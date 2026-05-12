@@ -8,7 +8,9 @@ import { AppConfig } from '../types';
 
 const createCorsOptions = (env: AppConfig): CorsOptions => ({
   origin(origin, callback) {
+    // Allow server-to-server requests (no Origin header) only in development
     if (!origin) {
+      if (env.nodeEnv === 'production') return callback(new Error('Origin required'));
       return callback(null, true);
     }
     if (env.corsOrigins.includes(origin)) {
@@ -50,6 +52,18 @@ export const applySecurityMiddleware = (app: Application, env: AppConfig): void 
   app.use(cors(createCorsOptions(env)));
   app.use(generalRateLimiter);
 };
+
+// Per-authenticated-user limit for booking creation (20 bookings per hour)
+export const bookingRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Applied after auth middleware — req.user is always present; user ID gives per-user limits
+  keyGenerator: (req) => String((req as { user?: { _id?: unknown } }).user?._id ?? 'anonymous'),
+  message: { message: 'Too many booking requests, please try again later' },
+  skip: () => process.env['NODE_ENV'] === 'test',
+});
 
 export const applyRequestSanitizers = (app: Application): void => {
   app.use(mongoSanitize({ replaceWith: '_' }));

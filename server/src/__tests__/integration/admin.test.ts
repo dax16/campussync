@@ -105,10 +105,11 @@ describe('GET /api/admin/bookings', () => {
     const res = await request.get('/api/admin/bookings').set(authHeader(adminToken));
 
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThanOrEqual(1);
-    expect(res.body[0]).toHaveProperty('user');
-    expect(res.body[0]).toHaveProperty('room');
+    expect(Array.isArray(res.body.bookings)).toBe(true);
+    expect(typeof res.body.total).toBe('number');
+    expect(res.body.bookings.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.bookings[0]).toHaveProperty('user');
+    expect(res.body.bookings[0]).toHaveProperty('room');
   });
 
   it('403 — returns 403 for a student user', async () => {
@@ -118,6 +119,79 @@ describe('GET /api/admin/bookings', () => {
 
   it('401 — returns 401 without a token', async () => {
     const res = await request.get('/api/admin/bookings');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/admin/rooms', () => {
+  it('200 — returns all rooms including inactive ones', async () => {
+    await createRoom({ isActive: true });
+    await createRoom({ isActive: false });
+
+    const res = await request.get('/api/admin/rooms').set(authHeader(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('403 — returns 403 for a student user', async () => {
+    const res = await request.get('/api/admin/rooms').set(authHeader(studentToken));
+    expect(res.status).toBe(403);
+  });
+
+  it('401 — returns 401 without a token', async () => {
+    const res = await request.get('/api/admin/rooms');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('PATCH /api/admin/rooms/:id/toggle-active', () => {
+  it('200 — toggles an active room to inactive', async () => {
+    const room = await createRoom({ isActive: true });
+
+    const res = await request
+      .patch(`/api/admin/rooms/${String(room._id)}/toggle-active`)
+      .set(authHeader(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.isActive).toBe(false);
+  });
+
+  it('200 — toggles an inactive room to active', async () => {
+    const room = await createRoom({ isActive: false });
+
+    const res = await request
+      .patch(`/api/admin/rooms/${String(room._id)}/toggle-active`)
+      .set(authHeader(adminToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.isActive).toBe(true);
+  });
+
+  it('404 — returns 404 for a nonexistent room', async () => {
+    const { Types } = await import('mongoose');
+    const fakeId = new Types.ObjectId().toHexString();
+
+    const res = await request
+      .patch(`/api/admin/rooms/${fakeId}/toggle-active`)
+      .set(authHeader(adminToken));
+
+    expect(res.status).toBe(404);
+  });
+
+  it('403 — returns 403 for a student user', async () => {
+    const room = await createRoom();
+    const res = await request
+      .patch(`/api/admin/rooms/${String(room._id)}/toggle-active`)
+      .set(authHeader(studentToken));
+    expect(res.status).toBe(403);
+  });
+
+  it('401 — returns 401 without a token', async () => {
+    const { Types } = await import('mongoose');
+    const fakeId = new Types.ObjectId().toHexString();
+    const res = await request.patch(`/api/admin/rooms/${fakeId}/toggle-active`);
     expect(res.status).toBe(401);
   });
 });

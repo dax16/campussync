@@ -37,10 +37,7 @@ describe('POST /api/bookings', () => {
     expect(res.status).toBe(201);
     expect(res.body.status).toBe(BookingStatus.CONFIRMED);
     expect(res.body.purpose).toBe('Study group');
-    expect(mockIo.emit).toHaveBeenCalledWith(
-      'bookingCreated',
-      expect.objectContaining({ startTime: '09:00' }),
-    );
+    expect(mockIo.bookingCreated).toHaveBeenCalled();
   });
 
   it('400 — returns 400 on a conflicting time slot', async () => {
@@ -158,7 +155,7 @@ describe('PATCH /api/bookings/:id/cancel', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe(BookingStatus.CANCELLED);
-    expect(mockIo.emit).toHaveBeenCalledWith('bookingCancelled', expect.any(Object));
+    expect(mockIo.bookingCancelled).toHaveBeenCalled();
   });
 
   it('404 — returns 404 for a booking that belongs to another user', async () => {

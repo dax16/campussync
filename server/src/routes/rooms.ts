@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import Room from '../models/Room';
 import Booking from '../models/Booking';
 import { auth } from '../middleware/auth';
+import { toBookingDate } from '../config/constants';
 import { BookingStatus, TimeSlot } from '../types';
 
 const router = express.Router();
@@ -21,23 +22,34 @@ router.get('/', auth, async (req: Request, res: Response): Promise<void> => {
     const rooms = await Room.find(filter).sort({ building: 1, floor: 1, name: 1 });
 
     if (date) {
-      const roomsWithAvailability = await Promise.all(
-        rooms.map(async (room) => {
-          const bookings = await Booking.find({
-            room: room._id,
-            date,
-            status: BookingStatus.CONFIRMED,
-          });
-          return { ...room.toObject(), bookings };
-        }),
-      );
+      const bookingDate = toBookingDate(date);
+      const roomIds = rooms.map((r) => r._id);
+      const allBookings = await Booking.find({
+        room: { $in: roomIds },
+        date: bookingDate,
+        status: BookingStatus.CONFIRMED,
+      });
+
+      const bookingsByRoom = new Map<string, typeof allBookings>();
+      for (const booking of allBookings) {
+        const key = booking.room.toString();
+        if (!bookingsByRoom.has(key)) bookingsByRoom.set(key, []);
+        bookingsByRoom.get(key)!.push(booking);
+      }
+
+      const roomsWithAvailability = rooms.map((room) => ({
+        ...room.toObject(),
+        bookings: bookingsByRoom.get(room._id.toString()) ?? [],
+      }));
+
       res.json(roomsWithAvailability);
       return;
     }
 
     res.json(rooms);
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('GET /rooms:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -50,7 +62,8 @@ router.get('/:id', auth, async (req: Request, res: Response): Promise<void> => {
     }
     res.json(room);
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('GET /rooms/:id:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -64,7 +77,7 @@ router.get('/:id/availability', auth, async (req: Request, res: Response): Promi
 
     const bookings = await Booking.find({
       room: req.params['id'],
-      date,
+      date: toBookingDate(date),
       status: BookingStatus.CONFIRMED,
     }).populate('user', 'name studentId');
 
@@ -78,7 +91,8 @@ router.get('/:id/availability', auth, async (req: Request, res: Response): Promi
 
     res.json(timeSlots);
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('GET /rooms/:id/availability:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 

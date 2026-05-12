@@ -4,6 +4,7 @@ import Booking from '../models/Booking';
 import User from '../models/User';
 import { adminAuth } from '../middleware/auth';
 import { validate, roomCreationValidator } from '../middleware/validators';
+import { toBookingDate } from '../config/constants';
 import { BookingStatus, RoomType, UserRole, AdminStats } from '../types';
 
 const router = express.Router();
@@ -11,13 +12,14 @@ const router = express.Router();
 router.get('/stats', adminAuth, async (_req: Request, res: Response): Promise<void> => {
   try {
     const todayStr = new Date().toISOString().split('T')[0] as string;
+    const todayDate = toBookingDate(todayStr);
 
     const [totalBookings, totalUsers, totalRooms, todayBookings, popularRooms, hourlyData] =
       await Promise.all([
         Booking.countDocuments({ status: BookingStatus.CONFIRMED }),
         User.countDocuments({ role: UserRole.STUDENT }),
         Room.countDocuments({ isActive: true }),
-        Booking.countDocuments({ date: todayStr, status: BookingStatus.CONFIRMED }),
+        Booking.countDocuments({ date: todayDate, status: BookingStatus.CONFIRMED }),
         Booking.aggregate([
           { $match: { status: BookingStatus.CONFIRMED } },
           { $group: { _id: '$room', count: { $sum: 1 } } },
@@ -37,7 +39,18 @@ router.get('/stats', adminAuth, async (_req: Request, res: Response): Promise<vo
     const stats: AdminStats = { totalBookings, totalUsers, totalRooms, todayBookings, popularRooms, hourlyData };
     res.json(stats);
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('GET /admin/stats:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.get('/rooms', adminAuth, async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const rooms = await Room.find().sort({ building: 1, floor: 1, name: 1 });
+    res.json(rooms);
+  } catch (err) {
+    console.error('GET /admin/rooms:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -55,20 +68,47 @@ router.post('/rooms', adminAuth, roomCreationValidator, validate, async (req: Re
     await room.save();
     res.status(201).json(room);
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('POST /admin/rooms:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
-router.get('/bookings', adminAuth, async (_req: Request, res: Response): Promise<void> => {
+router.get('/bookings', adminAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const bookings = await Booking.find()
-      .populate('user', 'name email studentId')
-      .populate('room', 'name building')
-      .sort({ createdAt: -1 })
-      .limit(50);
-    res.json(bookings);
+    const page = Math.max(1, parseInt(String(req.query['page'] ?? '1'), 10));
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query['limit'] ?? '50'), 10)));
+    const skip = (page - 1) * limit;
+
+    const [bookings, total] = await Promise.all([
+      Booking.find()
+        .populate('user', 'name email studentId')
+        .populate('room', 'name building')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Booking.countDocuments(),
+    ]);
+
+    res.json({ bookings, total, page, limit, pages: Math.ceil(total / limit) });
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('GET /admin/bookings:', err);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+router.patch('/rooms/:id/toggle-active', adminAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const room = await Room.findById(req.params['id']);
+    if (!room) {
+      res.status(404).json({ message: 'Room not found' });
+      return;
+    }
+    room.isActive = !room.isActive;
+    await room.save();
+    res.json({ _id: room._id, isActive: room.isActive });
+  } catch (err) {
+    console.error('PATCH /admin/rooms/:id/toggle-active:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 
@@ -96,7 +136,8 @@ router.post('/seed', adminAuth, async (_req: Request, res: Response): Promise<vo
     const count = await Room.countDocuments({ isActive: true });
     res.json({ message: 'Rooms seeded', count });
   } catch (err) {
-    res.status(500).json({ message: (err as Error).message });
+    console.error('POST /admin/seed:', err);
+    res.status(500).json({ message: 'Internal server error' });
   }
 });
 

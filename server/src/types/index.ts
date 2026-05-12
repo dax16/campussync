@@ -17,7 +17,6 @@ export enum RoomType {
 export enum BookingStatus {
   CONFIRMED = 'confirmed',
   CANCELLED = 'cancelled',
-  COMPLETED = 'completed',
 }
 
 // ─── Domain interfaces ───────────────────────────────────────────────────────
@@ -30,7 +29,8 @@ export interface IUser {
   program: string;
   semester: number;
   role: UserRole;
-  avatar: string;
+  resetToken: string | null;
+  resetTokenExpiry: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,7 +44,6 @@ export interface IRoom {
   amenities: string[];
   imageUrl: string;
   isActive: boolean;
-  currentOccupancy: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,13 +51,12 @@ export interface IRoom {
 export interface IBooking {
   user: Types.ObjectId;
   room: Types.ObjectId;
-  date: string;
+  date: Date;
   startTime: string;
   endTime: string;
   purpose: string;
   attendees: number;
   status: BookingStatus;
-  checkInTime: Date | null;
   notes: string;
   createdAt: Date;
   updatedAt: Date;
@@ -89,7 +87,7 @@ export interface AppConfig {
 export interface AuthResponse {
   token: string;
   user: {
-    id: Types.ObjectId;
+    _id: Types.ObjectId;
     name: string;
     email: string;
     role: UserRole;
